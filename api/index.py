@@ -2,17 +2,49 @@
 
 import os
 import requests
+import json
+
 from flask import Flask, request, jsonify
+
+TOKEN_FILE = 'strava_tokens.json'
+
 
 app = Flask(__name__)
 
-# Load environment variables
+STRAVA_CLIENT_ID = os.environ.get('STRAVA_CLIENT_ID')
+STRAVA_CLIENT_SECRET = os.environ.get('STRAVA_CLIENT_SECRET')
 STRAVA_VERIFY_TOKEN = os.environ.get('STRAVA_VERIFY_TOKEN')
-STRAVA_ACCESS_TOKEN = os.environ.get('STRAVA_ACCESS_TOKEN')
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
 GITHUB_REPO_OWNER = os.environ.get('GITHUB_REPO_OWNER')
 GITHUB_REPO_NAME = os.environ.get('GITHUB_REPO_NAME')
 GITHUB_EVENT_TYPE = os.environ.get('GITHUB_EVENT_TYPE')
+
+def get_tokens():
+    """Reads tokens from a file."""
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_tokens(tokens):
+    """Saves tokens to a file."""
+    with open(TOKEN_FILE, 'w') as f:
+        json.dump(tokens, f, indent=4)
+
+def refresh_strava_token(refresh_token):
+    """Refreshes the access token using the refresh token."""
+    token_url = "https://www.strava.com/oauth/token"
+    data = {
+        'client_id': STRAVA_CLIENT_ID,
+        'client_secret': STRAVA_CLIENT_SECRET,
+        'refresh_token': refresh_token,
+        'grant_type': 'refresh_token'
+    }
+    response = requests.post(token_url, data=data)
+    response.raise_for_status()
+    new_tokens = response.json()
+    save_tokens(new_tokens)
+    return new_tokens.get('access_token')
 
 @app.route('/strava_webhook', methods=['GET', 'POST'])
 def strava_webhook():
@@ -48,19 +80,31 @@ def strava_webhook():
             activity_id = payload.get('object_id')
             owner_id = payload.get('owner_id')
 
+            tokens = get_tokens()
+            access_token = tokens.get('access_token')
+            refresh_token = tokens.get('refresh_token')
+
             # Step 1: Fetch the full activity data from the Strava API
             strava_api_url = f"https://www.strava.com/api/v3/activities/{activity_id}"
-            headers = {'Authorization': f'Bearer {STRAVA_ACCESS_TOKEN}'}
-            
-            try:
-                strava_response = requests.get(strava_api_url, headers=headers)
-                strava_response.raise_for_status()
-                activity_data = strava_response.json()
-                print(f"Successfully fetched activity data for ID {activity_id}")
-            except requests.exceptions.RequestException as e:
-                print(f"Failed to fetch Strava activity data: {e}")
-                # If fetching fails, we still proceed to trigger the GitHub Action with a limited payload
-                activity_data = {"error": f"Failed to fetch activity details: {e}"}
+
+            for attempt in range(2):
+                headers = {'Authorization': f'Bearer {access_token}'}
+                
+                try:
+                    strava_response = requests.get(strava_api_url, headers=headers)
+                    strava_response.raise_for_status()
+                    activity_data = strava_response.json()
+                    print(f"Successfully fetched activity data for ID {activity_id}")
+                except requests.exceptions.HTTPError as e:
+                    if e.response.status_code == 401 and attempt == 0:
+                        print("Access token expired. Attempting to refresh.")
+                        access_token = refresh_strava_token(refresh_token)
+                    else:
+                        raise e                
+                except requests.exceptions.RequestException as e:
+                    print(f"Failed to fetch Strava activity data: {e}")
+                    # If fetching fails, we still proceed to trigger the GitHub Action with a limited payload
+                    activity_data = {"error": f"Failed to fetch activity details: {e}"}
 
 
             github_api_url = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/dispatches"
