@@ -10,7 +10,7 @@ from flask import Flask, request, jsonify
 
 
 app = Flask(__name__)
-REDIS_URL = os.environ.get('STRAVA_CLIENT_ID')
+REDIS_URL = os.environ.get('REDIS_URL')
 STRAVA_CLIENT_ID = os.environ.get('STRAVA_CLIENT_ID')
 STRAVA_CLIENT_SECRET = os.environ.get('STRAVA_CLIENT_SECRET')
 STRAVA_VERIFY_TOKEN = os.environ.get('STRAVA_VERIFY_TOKEN')
