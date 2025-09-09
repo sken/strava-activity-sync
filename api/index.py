@@ -8,6 +8,7 @@ app = Flask(__name__)
 
 # Load environment variables
 STRAVA_VERIFY_TOKEN = os.environ.get('STRAVA_VERIFY_TOKEN')
+STRAVA_ACCESS_TOKEN = os.environ.get('STRAVA_ACCESS_TOKEN')
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
 GITHUB_REPO_OWNER = os.environ.get('GITHUB_REPO_OWNER')
 GITHUB_REPO_NAME = os.environ.get('GITHUB_REPO_NAME')
@@ -43,6 +44,25 @@ def strava_webhook():
         
         # Trigger the GitHub Action
         if payload.get('aspect_type') == 'create' and payload.get('object_type') == 'activity':
+
+            activity_id = payload.get('object_id')
+            owner_id = payload.get('owner_id')
+
+            # Step 1: Fetch the full activity data from the Strava API
+            strava_api_url = f"https://www.strava.com/api/v3/activities/{activity_id}"
+            headers = {'Authorization': f'Bearer {STRAVA_ACCESS_TOKEN}'}
+            
+            try:
+                strava_response = requests.get(strava_api_url, headers=headers)
+                strava_response.raise_for_status()
+                activity_data = strava_response.json()
+                print(f"Successfully fetched activity data for ID {activity_id}")
+            except requests.exceptions.RequestException as e:
+                print(f"Failed to fetch Strava activity data: {e}")
+                # If fetching fails, we still proceed to trigger the GitHub Action with a limited payload
+                activity_data = {"error": f"Failed to fetch activity details: {e}"}
+
+
             github_api_url = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/dispatches"
             
             headers = {
@@ -53,8 +73,9 @@ def strava_webhook():
             data = {
                 "event_type": GITHUB_EVENT_TYPE,
                 "client_payload": {
-                    "activity_id": payload.get('object_id'),
-                    "owner_id": payload.get('owner_id')
+                    "activity_id": activity_id,
+                    "owner_id": owner_id,
+                    "activity_data": activity_data
                 }
             }
             
