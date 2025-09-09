@@ -46,9 +46,8 @@ def strava_webhook():
             github_api_url = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/dispatches"
             
             headers = {
-                'Accept': 'application/vnd.github.v3+json',
-                'Authorization': f'token {GITHUB_TOKEN}',
-                'Content-Type': 'application/json'
+                'Accept': 'application/vnd.github+json',
+                'Authorization': f'token {GITHUB_TOKEN}'
             }
             
             data = {
