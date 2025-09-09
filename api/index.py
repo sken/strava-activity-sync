@@ -3,14 +3,14 @@
 import os
 import requests
 import json
+import redis
 
 from flask import Flask, request, jsonify
 
-TOKEN_FILE = 'strava_tokens.json'
 
 
 app = Flask(__name__)
-
+REDIS_URL = os.environ.get('STRAVA_CLIENT_ID')
 STRAVA_CLIENT_ID = os.environ.get('STRAVA_CLIENT_ID')
 STRAVA_CLIENT_SECRET = os.environ.get('STRAVA_CLIENT_SECRET')
 STRAVA_VERIFY_TOKEN = os.environ.get('STRAVA_VERIFY_TOKEN')
@@ -19,17 +19,31 @@ GITHUB_REPO_OWNER = os.environ.get('GITHUB_REPO_OWNER')
 GITHUB_REPO_NAME = os.environ.get('GITHUB_REPO_NAME')
 GITHUB_EVENT_TYPE = os.environ.get('GITHUB_EVENT_TYPE')
 
+
+r = redis.Redis.from_url(REDIS_URL)
+
 def get_tokens():
-    """Reads tokens from a file."""
-    if os.path.exists(TOKEN_FILE):
-        with open(TOKEN_FILE, 'r') as f:
-            return json.load(f)
-    return {}
+    """Reads tokens from a simple key-value store."""
+    try:
+        tokens = r.get('strava_tokens')
+        if tokens:
+            return json.loads(tokens)
+    except Exception as e:
+        print(f"Error retrieving tokens from KV store: {e}")
+    
+    # Fallback to initial environment variables if KV store is empty
+    initial_tokens = {
+        'access_token': os.environ.get('STRAVA_INITIAL_ACCESS_TOKEN'),
+        'refresh_token': os.environ.get('STRAVA_INITIAL_REFRESH_TOKEN')
+    }
+    return initial_tokens
 
 def save_tokens(tokens):
-    """Saves tokens to a file."""
-    with open(TOKEN_FILE, 'w') as f:
-        json.dump(tokens, f, indent=4)
+    """Saves tokens to a simple key-value store."""
+    try:
+        r.set('strava_tokens', json.dumps(tokens))
+    except Exception as e:
+        print(f"Error saving tokens to KV store: {e}")
 
 def refresh_strava_token(refresh_token):
     """Refreshes the access token using the refresh token."""
