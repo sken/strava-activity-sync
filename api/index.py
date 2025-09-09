@@ -130,6 +130,9 @@ def strava_webhook():
                     "name": activity_data.get("name"),
                     "distance": activity_data.get("distance"),
                     "sport_type": activity_data.get("sport_type"),
+                    "start_date": activity_data.get("start_date"),
+                    "average_speed": activity_data.get("average_speed"),
+                    
                     "decoded_polyline": decoded_polyline
                 }
 
